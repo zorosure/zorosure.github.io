@@ -4,7 +4,7 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="keywords" content="my_data.md, Hexo">
+    <meta name="keywords" content="测试文档, Hexo">
     <meta name="description" content="">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -17,7 +17,7 @@
     <!-- Global site tag (gtag.js) - Google Analytics -->
 
 
-    <title>my_data.md | Hexo</title>
+    <title>测试文档 | Hexo</title>
     <link rel="icon" type="image/png" href="/favicon.png">
 
     <link rel="stylesheet" type="text/css" href="/libs/awesome/css/all.css">
@@ -309,12 +309,12 @@
 
 
 
-<div class="bg-cover pd-header post-cover" style="background-image: url('/medias/featureimages/8.jpg')">
+<div class="bg-cover pd-header post-cover" style="background-image: url('/medias/featureimages/6.jpg')">
     <div class="container" style="right: 0px;left: 0px;">
         <div class="row">
             <div class="col s12 m12 l12">
                 <div class="brand">
-                    <h1 class="description center-align post-title">my_data.md</h1>
+                    <h1 class="description center-align post-title">测试文档</h1>
                 </div>
             </div>
         </div>
@@ -463,7 +463,114 @@
 
         <div class="card-content article-card-content">
             <div id="articleContent">
-                
+                <h2 id="一、kconf中配置需要清理的数据表"><a href="#一、kconf中配置需要清理的数据表" class="headerlink" title="一、kconf中配置需要清理的数据表"></a>一、kconf中配置需要清理的数据表</h2><ol>
+<li>配置表名、数据保留时间和时间字段</li>
+</ol>
+<p><a target="_blank" rel="noopener" href="https://kconf.corp.kuaishou.com/#/userprofile/upplatform/commonTaskConfig">https://kconf.corp.kuaishou.com/#/userprofile/upplatform/commonTaskConfig</a></p>
+<p>![image-20210914102401743](/Users/zhangyingshuo/Library/Application Support/typora-user-images/image-20210914102401743.png)</p>
+<ol start="2">
+<li>建议</li>
+</ol>
+<p>测试时在数据库中复制已有表进行测试，取名为：表名_copyn</p>
+<h2 id="二、执行原理"><a href="#二、执行原理" class="headerlink" title="二、执行原理"></a>二、执行原理</h2><p>​    假设当前时间为currentTime，retentionTime为180天，就是保存最近180天的数据，time &lt; currentTime - 180(转成毫秒)的数据备份清理</p>
+<ol>
+<li><p>查找到180天之前的数据中最早的数据，记录时间戳为minTimestamp</p>
+</li>
+<li><p>备份180天之前的所有数据，备份的hive表为：<code>ks_origin_uu_log.userprofile_mysql_data_backup</code></p>
+</li>
+<li><p>删除已经备份的数据，删除的策略不是一次性删除所有已经备份的数据，而是分批次删除</p>
+<p>每次删除1000条，并且睡眠1s</p>
+<p>直到删除掉所有已经备份的记录</p>
+</li>
+</ol>
+<h2 id="三、测试"><a href="#三、测试" class="headerlink" title="三、测试"></a>三、测试</h2><p>以表 <code>g_userprofile_task_copy1</code>为例，测试时需要通过手动查询数据表作为真值，与任务执行后的结果做对比</p>
+<h3 id="1-数据库使用sql查询数据"><a href="#1-数据库使用sql查询数据" class="headerlink" title="1. 数据库使用sql查询数据"></a>1. 数据库使用sql查询数据</h3><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查找最小时间戳,minTimestamp</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">min</span>(utime) <span class="keyword">from</span> ug_userprofile_task;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查询需备份数据总量, currentTime可以从网上查询：https://tool.lu/timestamp/</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&lt;</span> currentTime <span class="operator">-</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 根据最小时间戳得到本次任务需要删除的记录数量, count1</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&gt;=</span> minTimestamp <span class="keyword">and</span> utime <span class="operator">&lt;=</span> minTimestamp <span class="operator">+</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span>;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>注意：</p>
+<p>查询的表名，有的是<code>ug_userprofile_task</code>， 有的是<code>ug_userprofile_task_copy1</code></p>
+<p>这里查询总量时使用的是<code>ug_userprofile_task</code>，执行任务的操作是在<code>ug_userprofile_task_copy1</code>中</p>
+<blockquote>
+<p>为什么使用<code>ug_userprofile_task</code>查询总数据量，因为存在<code>ug_userprofile_task</code>在测试过程中增加数据的可能</p>
+</blockquote>
+<p>记录当前时间戳，后续还会用到<code>currentTime</code></p>
+<p>currentTime - 180 * 24 * 60 * 60 * 1000 可以在<a target="_blank" rel="noopener" href="https://tool.lu/timestamp/">https://tool.lu/timestamp/</a> 直接获取结果，不必计算</p>
+<h3 id="2-执行任务"><a href="#2-执行任务" class="headerlink" title="2. 执行任务"></a>2. 执行任务</h3><p><a target="_blank" rel="noopener" href="https://kconf.corp.kuaishou.com/#/userprofile/upplatform/commonTaskConfig">kconf</a>中可以增加/减少需要清理数据的表，也可以对每个表配置是否删除mysql中的数据，第一次执行不删除数据</p>
+<ol>
+<li>在任务平台启动任务:    <a target="_blank" rel="noopener" href="https://halo.corp.kuaishou.com/task/#/task">https://halo.corp.kuaishou.com/task/#/task</a></li>
+</ol>
+<p>![image-20210801202235530](/Users/zhangyingshuo/Library/Application Support/typora-user-images/image-20210801202235530.png)</p>
+<p>环境：国内测试</p>
+<p>任务名称：<a target="_blank" rel="noopener" href="https://halo.corp.kuaishou.com/task/#/common/task/BackupMysqlDataTask/test">BackupMysqlDataTask</a></p>
+<p>任务触发方式，可以选择手动和定时触发</p>
+<ol start="2">
+<li>执行一次任务后，使用数据库sql查询剩余记录数量count2：</li>
+</ol>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查询数据表记录总量count2</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查询执行一次任务后剩余记录总量count3</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1;</span><br></pre></td></tr></table></figure>
+
+<p>比较查询的结果：</p>
+<p><code>count1</code>是否等于<code>count2</code> - <code>count3</code></p>
+<p>如果等于说明执行任务是成功的</p>
+<h3 id="注："><a href="#注：" class="headerlink" title="注："></a>注：</h3><blockquote>
+<p>有的时候在测试的时候，数据表又插入了新的数据，此时count1 要略微小于count2 - count3</p>
+<p>可以执行：</p>
+<p>select count(1) from ug_userprofile_task_copy1 where utime &gt;= minTimestamp and utime &lt;= minTimestamp + 180 * 24 * 60 * 60 * 1000;</p>
+<p>查看是否还有数据，如果没有，说明删除成功</p>
+</blockquote>
+<h3 id="3-再一次执行任务"><a href="#3-再一次执行任务" class="headerlink" title="3.再一次执行任务"></a>3.再一次执行任务</h3><p>打开删除数据开关</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查询数据表记录总量count2</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查询执行一次任务后剩余记录总量count3</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1;</span><br></pre></td></tr></table></figure>
+
+
+
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查询记录是否删除，结果是否为0</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&gt;=</span> minTimestamp <span class="operator">+</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span> <span class="keyword">and</span> utime <span class="operator">&lt;=</span> minTimestamp <span class="operator">+</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span> <span class="operator">+</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查询被删除的记录数量count4</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task <span class="keyword">where</span> utime <span class="operator">&lt;=</span> minTimestamp <span class="operator">+</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span> <span class="operator">+</span> <span class="number">180</span> <span class="operator">*</span> <span class="number">24</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">60</span> <span class="operator">*</span> <span class="number">1000</span>;</span><br></pre></td></tr></table></figure>
+
+<p>如果记录被删除，查询结果为0，并且</p>
+<p><code>count4</code> = <code>count2</code> - <code>count3</code></p>
+<p>说明数据删除成功</p>
+<h3 id="4-去idp平台ks-origin-uu-log-userprofile-mysql-data-backup表中查找数据是否已经备份"><a href="#4-去idp平台ks-origin-uu-log-userprofile-mysql-data-backup表中查找数据是否已经备份" class="headerlink" title="4. 去idp平台ks_origin_uu_log.userprofile_mysql_data_backup表中查找数据是否已经备份"></a>4. 去idp平台<code>ks_origin_uu_log.userprofile_mysql_data_backup</code>表中查找数据是否已经备份</h3><blockquote>
+<p>注意：</p>
+<p>ks_origin_uu_log.userprofile_mysql_data_backup表分区时两个字段，分别是天和小时，这里的小时是系统自定，由于kafka每个小时被消费一次</p>
+<p>执行完清理任务后，数据表中记录写入kafka，但是hive消费kafka并不是立即的，而是一个小时刷新一次，所以需要等待一个小时左右才能在hive中查找到备份的数据</p>
+</blockquote>
+<hr>
+<h3 id="测试结果"><a href="#测试结果" class="headerlink" title="测试结果"></a>测试结果</h3><ol>
+<li>创建表</li>
+</ol>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ug_userprofile_task_copy1</span><br><span class="line">ug_userprofile_kimpush_log_copy1</span><br><span class="line">uuc_userprofile_crowd_invoke_copy1</span><br></pre></td></tr></table></figure>
+
+<ol start="2">
+<li>查看配置</li>
+</ol>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">&quot;backupMysqlTableConfig&quot;</span>: &#123;</span><br><span class="line">    <span class="attr">&quot;ug_userprofile_task_copy1&quot;</span>: &#123;</span><br><span class="line">      <span class="attr">&quot;tableId&quot;</span>: <span class="number">1</span>,</span><br><span class="line">    	<span class="attr">&quot;retentionTime&quot;</span>: <span class="number">180</span>,</span><br><span class="line">      <span class="attr">&quot;timeColumn&quot;</span>: <span class="string">&quot;utime&quot;</span>,</span><br><span class="line">      <span class="attr">&quot;isDelete&quot;</span>:<span class="literal">false</span></span><br><span class="line">    &#125;,</span><br><span class="line">    <span class="attr">&quot;ug_userprofile_kimpush_log_copy1&quot;</span>: &#123;</span><br><span class="line">      <span class="attr">&quot;tableId&quot;</span>: <span class="number">2</span>,</span><br><span class="line">    	<span class="attr">&quot;retentionTime&quot;</span>: <span class="number">365</span>,</span><br><span class="line">      <span class="attr">&quot;timeColumn&quot;</span>: <span class="string">&quot;pushtime&quot;</span>,</span><br><span class="line">      <span class="attr">&quot;isDelete&quot;</span>: <span class="literal">false</span></span><br><span class="line">    &#125;,</span><br><span class="line">    <span class="attr">&quot;uuc_userprofile_crowd_invoke_copy1&quot;</span>: &#123;</span><br><span class="line">      <span class="attr">&quot;tableId&quot;</span>: <span class="number">3</span>,</span><br><span class="line">    	<span class="attr">&quot;retentionTime&quot;</span>: <span class="number">180</span>,</span><br><span class="line">      <span class="attr">&quot;timeColumn&quot;</span>: <span class="string">&quot;ctime&quot;</span>,</span><br><span class="line">      <span class="attr">&quot;isDelete&quot;</span>: <span class="literal">false</span></span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+
+<ol start="3">
+<li>从mysql中查找数据</li>
+</ol>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 90天——7776000000毫秒</span></span><br><span class="line"><span class="comment">-- 180天——15552000000毫秒</span></span><br><span class="line"><span class="comment">-- 365天——31536000000毫秒</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 1631513674000当前时间戳</span></span><br><span class="line"><span class="comment">-- 1631513674000 - 7776000000 = 1623737674000</span></span><br><span class="line"><span class="comment">-- 1631513674000 - 15552000000 = 1615961674000</span></span><br><span class="line"><span class="comment">-- 1631513674000 - 31536000000 = 1599977674000</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&lt;=</span> <span class="number">1615961674000</span>   <span class="comment">--5286</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&lt;=</span> <span class="number">1615961674000</span>  <span class="comment">-- 5286</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_kimpush_log_copy1 <span class="keyword">where</span> pushtime <span class="operator">&lt;=</span> <span class="number">1599977674000</span>  <span class="comment">--7337</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_kimpush_log <span class="keyword">where</span> pushtime <span class="operator">&lt;=</span> <span class="number">1599977674000</span>  <span class="comment">--7337</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> uuc_userprofile_crowd_invoke_copy1 <span class="keyword">where</span> ctime <span class="operator">&lt;=</span> <span class="number">1623740064476</span>  <span class="comment">--658</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> uuc_userprofile_crowd_invoke <span class="keyword">where</span> ctime <span class="operator">&lt;=</span> <span class="number">1623740064476</span>  <span class="comment">-- 658</span></span><br></pre></td></tr></table></figure>
+
+
+
+<ol start="4">
+<li>执行任务</li>
+</ol>
+<p>备份数据</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">打印日志</span><br><span class="line">backupFromMysql2Hive expiredTime=1615964064476</span><br><span class="line">tableName=ug_userprofile_task_copy1, expiredTime=1615964064476, timeColumn=utime, records.size()=5286</span><br><span class="line">the key of tableName is not exist, minTimestamp=1603812080630, maxTimestamp=1615958378038</span><br><span class="line">jedis deleteTimestamp=1603812080630, backupTimestamp=1603812080630</span><br><span class="line"></span><br><span class="line">backupFromMysql2Hive expiredTime=1599980064476</span><br><span class="line">tableName=ug_userprofile_kimpush_log_copy1, expiredTime=1599980064476, timeColumn=pushtime, records.size()=7337</span><br><span class="line">the key of tableName is not exist, minTimestamp=1591957726776, maxTimestamp=1599903795676</span><br><span class="line">jedis deleteTimestamp=1591957726776, backupTimestamp=1591957726776</span><br><span class="line"></span><br><span class="line">backupFromMysql2Hive expiredTime=1623740064476</span><br><span class="line">tableName=uuc_userprofile_crowd_invoke_copy1, expiredTime=1623740064476, timeColumn=ctime, records.size()=658</span><br><span class="line">the key of tableName is not exist, minTimestamp=1618834724315, maxTimestamp=1623738906872</span><br><span class="line">jedis deleteTimestamp=1618834724315, backupTimestamp=1618834724315</span><br></pre></td></tr></table></figure>
+
+<p><strong>从mysql表中读取数据数量正确</strong></p>
+<p>查看hive表，hive表消费kafka是在整点的时候才消费</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"> <span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ks_origin_uu_log.userprofile_mysql_data_backup <span class="keyword">where</span> p_date<span class="operator">=</span><span class="number">20210913</span>;</span><br><span class="line"></span><br><span class="line">结果：</span><br><span class="line"><span class="number">13278</span> ！<span class="operator">=</span> <span class="number">5286</span><span class="operator">+</span><span class="number">7337</span><span class="operator">+</span><span class="number">658</span><span class="operator">=</span><span class="number">13281</span> </span><br><span class="line"></span><br><span class="line">问题产生原因：最早一条数据没有备份</span><br><span class="line"></span><br><span class="line">问题已修复</span><br><span class="line">backupFromMysql2Hive expiredTime<span class="operator">=</span><span class="number">1615970317456</span>, timeColumn<span class="operator">=</span>utime, tableId<span class="operator">=</span><span class="number">1</span></span><br><span class="line">tableName<span class="operator">=</span>ug_userprofile_task_copy1, expiredTime<span class="operator">=</span><span class="number">1615970317456</span>, timeColumn<span class="operator">=</span>utime, records.size()<span class="operator">=</span><span class="number">5290</span></span><br><span class="line">the key <span class="keyword">of</span> tableName <span class="keyword">is</span> <span class="keyword">not</span> exist, minTimestamp<span class="operator">=</span><span class="number">1603812080630</span>, maxTimestamp<span class="operator">=</span><span class="number">1615969273392</span></span><br><span class="line">backupFromMysql2Hive expiredTime<span class="operator">=</span><span class="number">1599986317456</span>, timeColumn<span class="operator">=</span>pushtime, tableId<span class="operator">=</span><span class="number">2</span></span><br><span class="line">tableName<span class="operator">=</span>ug_userprofile_kimpush_log_copy1, expiredTime<span class="operator">=</span><span class="number">1599986317456</span>, timeColumn<span class="operator">=</span>pushtime, records.size()<span class="operator">=</span><span class="number">7339</span></span><br><span class="line">the key <span class="keyword">of</span> tableName <span class="keyword">is</span> <span class="keyword">not</span> exist, minTimestamp<span class="operator">=</span><span class="number">1591957726776</span>, maxTimestamp<span class="operator">=</span><span class="number">1599985941990</span>,</span><br><span class="line">backupFromMysql2Hive expiredTime<span class="operator">=</span><span class="number">1623746317456</span>, timeColumn<span class="operator">=</span>ctime, tableId<span class="operator">=</span><span class="number">3</span></span><br><span class="line">tableName<span class="operator">=</span>uuc_userprofile_crowd_invoke_copy1, expiredTime<span class="operator">=</span><span class="number">1623746317456</span>, timeColumn<span class="operator">=</span>ctime, records.size()<span class="operator">=</span><span class="number">662</span></span><br><span class="line">the key <span class="keyword">of</span> tableName <span class="keyword">is</span> <span class="keyword">not</span> exist, minTimestamp<span class="operator">=</span><span class="number">1618834724315</span>, maxTimestamp<span class="operator">=</span><span class="number">162374236049</span></span><br><span class="line"></span><br><span class="line">hive表查询备份数据：</span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ks_origin_uu_log.userprofile_mysql_data_backup <span class="keyword">where</span> p_date<span class="operator">=</span><span class="number">20210913</span> <span class="keyword">and</span> p_hourmin<span class="operator">=</span><span class="string">&#x27;1600&#x27;</span></span><br><span class="line"><span class="number">13291</span> <span class="operator">=</span> <span class="number">5290</span> <span class="operator">+</span> <span class="number">7339</span> <span class="operator">+</span> <span class="number">662</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>通过kafka备份到hive数据量正确</strong></p>
+<ol start="5">
+<li>删除数据</li>
+</ol>
+<p>打开kconf</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">backupFromMysql2Hive expiredTime=1615974252654, timeColumn=utime, tableId=1</span><br><span class="line">tableName=ug_userprofile_task_copy1, expiredTime=1615974252654, timeColumn=utime, records.size()=5298</span><br><span class="line">backupFromMysql2Hive expiredTime=1599990252654, timeColumn=pushtime, tableId=2</span><br><span class="line">tableName=ug_userprofile_kimpush_log_copy1, expiredTime=1599990252654, timeColumn=pushtime, records.size()=7340</span><br><span class="line">backupFromMysql2Hive expiredTime=1623750252654, timeColumn=ctime, tableId=3</span><br><span class="line">tableName=uuc_userprofile_crowd_invoke_copy1, expiredTime=1623750252654, timeColumn=ctime, records.size()=664</span><br></pre></td></tr></table></figure>
+
+<p>sql查询是否删除</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">select</span> <span class="operator">*</span> <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&lt;=</span> <span class="number">1615974252654</span>   <span class="comment">-- 结果是无</span></span><br><span class="line"><span class="keyword">select</span> <span class="operator">*</span> <span class="keyword">from</span> ug_userprofile_kimpush_log_copy1 <span class="keyword">where</span> pushtime <span class="operator">&lt;=</span> <span class="number">1599990252654</span>  <span class="comment">-- 结果是无</span></span><br><span class="line"><span class="keyword">select</span> <span class="operator">*</span> <span class="keyword">from</span> uuc_userprofile_crowd_invoke_copy1 <span class="keyword">where</span> ctime <span class="operator">&lt;=</span> <span class="number">1623750252654</span>  <span class="comment">-- 结果是无</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task_copy1 <span class="keyword">where</span> utime <span class="operator">&gt;</span> <span class="number">1615974252654</span> 	<span class="comment">-- 17785</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_task <span class="keyword">where</span> utime <span class="operator">&gt;</span> <span class="number">1615974252654</span>	<span class="comment">--17785</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_kimpush_log_copy1 <span class="keyword">where</span> pushtime <span class="operator">&gt;</span> <span class="number">1599990252654</span>   <span class="comment">--42030</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> ug_userprofile_kimpush_log <span class="keyword">where</span> pushtime <span class="operator">&gt;</span> <span class="number">1599990252654</span>		<span class="comment">--42030</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> uuc_userprofile_crowd_invoke_copy1 <span class="keyword">where</span> ctime <span class="operator">&gt;</span> <span class="number">1623750252654</span>  <span class="comment">-- 35127</span></span><br><span class="line"><span class="keyword">select</span> <span class="built_in">count</span>(<span class="number">1</span>) <span class="keyword">from</span> uuc_userprofile_crowd_invoke <span class="keyword">where</span> ctime <span class="operator">&gt;</span> <span class="number">1623750252654</span>  <span class="comment">-- 35127</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>删除数据后剩余数据数量正确</p>
+
                 
             </div>
             <hr/>
@@ -489,7 +596,7 @@
                     </i>
                 </span>
                 <span class="reprint-info">
-                    <a href="http://zorosure.github.io/2021/10/10/my-data-md/">http://zorosure.github.io/2021/10/10/my-data-md/</a>
+                    <a href="http://zorosure.github.io/2021/10/10/%E6%B5%8B%E8%AF%95%E6%96%87%E6%A1%A3/">http://zorosure.github.io/2021/10/10/%E6%B5%8B%E8%AF%95%E6%96%87%E6%A1%A3/</a>
                 </span>
             </div>
             <div class="reprint__notice">
@@ -696,9 +803,10 @@
 <article id="prenext-posts" class="prev-next articles">
     <div class="row article-row">
         
-        <div class="article col s12 m6" data-aos="fade-up">
+        <div class="article col s12 m6" data-aos="fade-up" data-aos="fade-up">
             <div class="article-badge left-badge text-color">
-                <i class="fas fa-chevron-left"></i>&nbsp;Previous</div>
+                <i class="far fa-dot-circle"></i>&nbsp;Current
+            </div>
             <div class="card">
                 <a href="/2021/10/10/%E6%B5%8B%E8%AF%95%E6%96%87%E6%A1%A3/">
                     <div class="card-image">
@@ -716,9 +824,9 @@
                         
                     </div>
                     <div class="publish-info">
-                        <span class="publish-date">
-                            <i class="far fa-clock fa-fw icon-date"></i>2021-10-10
-                        </span>
+                            <span class="publish-date">
+                                <i class="far fa-clock fa-fw icon-date"></i>2021-10-10
+                            </span>
                         <span class="publish-author">
                             
                             <i class="fas fa-user fa-fw"></i>
@@ -727,6 +835,7 @@
                         </span>
                     </div>
                 </div>
+
                 
             </div>
         </div>
@@ -737,13 +846,13 @@
                 Next&nbsp;<i class="fas fa-chevron-right"></i>
             </div>
             <div class="card">
-                <a href="/2021/10/10/my-website/">
+                <a href="/2021/10/10/my-data-md/">
                     <div class="card-image">
                         
                         
-                        <img src="/medias/featureimages/0.jpg" class="responsive-img" alt="my_website">
+                        <img src="/medias/featureimages/8.jpg" class="responsive-img" alt="my_data.md">
                         
-                        <span class="card-title">my_website</span>
+                        <span class="card-title">my_data.md</span>
                     </div>
                 </a>
                 <div class="card-content article-content">
